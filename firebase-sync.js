@@ -468,14 +468,17 @@ const CloudSync = (() => {
         );
     }
 
-    // ── دمج ذكي للبيانات القادمة من السحابة مع البيانات المحلية ──
+    // ── دمج ذكي وآمن للبيانات القادمة من السحابة مع البيانات المحلية ──
+    // ⚠️ حماية مطلقة: لا يتم مسح أو حذف أي سجلات محليّة إطلاقاً أثناء التحديث أو المزامنة!
     async function mergeRemoteTable(table, remoteArr) {
-        const localArr = db[table] || [];
-        const tableHashes = hashes[table] || {};
-        const remoteIds = new Set(remoteArr.map(r => String(r.id)));
+        if (!Array.isArray(db[table])) db[table] = [];
+        const localArr = db[table];
+        if (!hashes[table]) hashes[table] = {};
+        const tableHashes = hashes[table];
         let changed = false;
 
         for (const remoteRec of remoteArr) {
+            if (remoteRec == null || remoteRec.id === undefined || remoteRec.id === null) continue;
             const id = String(remoteRec.id);
             const idx = localArr.findIndex(r => String(r.id) === id);
 
@@ -497,38 +500,9 @@ const CloudSync = (() => {
             }
         }
 
-        for (let i = localArr.length - 1; i >= 0; i--) {
-            const localRec = localArr[i];
-            const id = String(localRec.id);
-
-            if (!remoteIds.has(id)) {
-                if (tableHashes[id] !== undefined) {
-                    localArr.splice(i, 1);
-                    await StorageEngine.delete(table, localRec.id).catch(() => { });
-                    delete tableHashes[id];
-                    changed = true;
-                }
-            }
-        }
-
         hashes[table] = tableHashes;
+        saveHashes();
         return changed;
-    }
-
-    async function replaceLocalTableFromRemote(table, remoteArr) {
-        if (!Array.isArray(db[table])) db[table] = [];
-        await StorageEngine.clear(table).catch(() => { });
-        db[table] = remoteArr.slice();
-        if (remoteArr.length > 0) {
-            await StorageEngine.save(table, remoteArr).catch(() => { });
-        }
-        hashes[table] = {};
-        remoteArr.forEach(rec => {
-            if (rec && rec.id !== undefined && rec.id !== null) {
-                hashes[table][String(rec.id)] = hashOf(rec);
-            }
-        });
-        return true;
     }
 
     // ── جلب يدوي بزر — دمج البيانات المحلية مع بيانات السحابة دون مسح التعديلات المحلية ──
@@ -763,9 +737,7 @@ const CloudSync = (() => {
                     remoteArr.push(data);
                 });
 
-                if (isFreshSync) {
-                    await replaceLocalTableFromRemote(table, remoteArr);
-                } else if (remoteArr.length > 0) {
+                if (remoteArr.length > 0) {
                     await mergeRemoteTable(table, remoteArr);
                 }
             }
@@ -781,6 +753,9 @@ const CloudSync = (() => {
             saveHashes();
             updateLastSyncTime();
             isFreshSync = false;
+
+            // ✅ حماية مهمة: بعد الدمج، نضمن رفع أي بيانات محلية غير موجودة على السحابة
+            pushAllTables();
         } catch (e) {
             console.warn('[CloudSync] pullAllFromCloudInitial warning:', e);
         } finally {
