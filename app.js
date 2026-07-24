@@ -201,6 +201,52 @@ window.RBAC = RBAC;
 
 // --- Database & Persistence ---
 // --- Database & Persistence ---
+function slugifyAppTenantPart(value) {
+    return String(value || '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 80);
+}
+
+function resolveAppTenantId() {
+    const initialData = window.edu_initial_data || {};
+    const initialSettings = initialData.settings || {};
+    const profile = initialSettings.appProfile || initialData.appProfile || {};
+    const explicit = window.CLOUD_SYNC_TENANT_ID || initialData.cloudSyncTenantId || initialData.tenantId || initialSettings.cloudSyncTenantId;
+    const fromProfile = [
+        profile.centerName,
+        profile.teacherName,
+        profile.specialization
+    ].map(slugifyAppTenantPart).filter(Boolean).join('-');
+    const fallback = slugifyAppTenantPart(location.hostname + '-' + location.pathname.replace(/\/[^/]*$/, '')) || 'default';
+    return slugifyAppTenantPart(explicit) || fromProfile || fallback;
+}
+
+const APP_TENANT_ID = resolveAppTenantId();
+window.APP_TENANT_ID = APP_TENANT_ID;
+window.CLOUD_SYNC_TENANT_ID = window.CLOUD_SYNC_TENANT_ID || APP_TENANT_ID;
+
+(function resetLocalAppStateWhenTenantChanges() {
+    const key = 'edu_active_tenant_id';
+    let previous = null;
+    try { previous = localStorage.getItem(key); } catch (e) { }
+    if (previous && previous !== APP_TENANT_ID) {
+        const prefixes = [
+            'edu_', '_fallback_', '_defaultGroupsSeeded', 'dailyTreasury',
+            'dt_', 'treasuryArchiveHour', 'activity_log'
+        ];
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const storageKey = localStorage.key(i);
+            if (storageKey && prefixes.some(prefix => storageKey.startsWith(prefix))) {
+                localStorage.removeItem(storageKey);
+            }
+        }
+    }
+    try { localStorage.setItem(key, APP_TENANT_ID); } catch (e) { }
+})();
+
 let currentGrade = localStorage.getItem('edu_active_grade') || null;
 let currentGroupId = localStorage.getItem('edu_active_group') || null;
 
@@ -255,7 +301,7 @@ const StorageEngine = {
     db: null,
     async init() {
         return new Promise((resolve, reject) => {
-            const request = indexedDB.open("EduMasterLargeDB", 5);
+            const request = indexedDB.open("EduMasterLargeDB_" + APP_TENANT_ID, 5);
             request.onerror = (e) => reject("IndexedDB error: " + e.target.errorCode);
             request.onupgradeneeded = (e) => {
                 const db = e.target.result;
@@ -10456,6 +10502,7 @@ function getProgramProfile() {
     if (!db._settings.appProfile) {
         db._settings.appProfile = {
             centerName: 'سنتر البنا',
+            appTitle: 'نظام إدارة الدروس',
             teacherName: 'سنتر البنا',
             specialization: 'لإعداد الأوائل',
             phone: '',
@@ -10466,6 +10513,9 @@ function getProgramProfile() {
     // ✅ توافق مع الملفات القديمة: تأكد من وجود الحقول الجديدة دائماً
     if (!db._settings.appProfile.specialization) {
         db._settings.appProfile.specialization = 'لإعداد الأوائل';
+    }
+    if (!db._settings.appProfile.appTitle) {
+        db._settings.appProfile.appTitle = db._settings.appProfile.centerName || 'نظام إدارة الدروس';
     }
     if (db._settings.appProfile.absenceMessage === undefined) {
         db._settings.appProfile.absenceMessage = 'السلام عليكم ورحمة الله وبركاته،\nنحيط سيادتكم علماً بأن الطالب/ـة {StudentName} لم يحضر/تحضر الحصة الدراسية اليوم.\nنرجو التكرم بمتابعة سبب الغياب.';
@@ -10679,7 +10729,11 @@ function viewFinancialEditLog() {
 
 function applyProgramProfile() {
     const profile = getProgramProfile();
-    document.title = `${profile.centerName} | نظام الإدارة`;
+    const appTitle = (profile.appTitle && profile.appTitle.trim()) ? profile.appTitle.trim() : (profile.centerName || 'نظام إدارة الدروس');
+    document.title = `${appTitle} | نظام الإدارة`;
+
+    const splashTitle = document.getElementById('splash-app-title');
+    if (splashTitle) splashTitle.innerText = appTitle;
 
     const logo = document.querySelector('.logo');
     if (logo) logo.innerHTML = `<i class="fas fa-book-open"></i> ${profile.centerName || 'سنتر البنا'}`;
@@ -10733,6 +10787,10 @@ function ensureSettingsSection() {
                 <div class="settings-row">
                     <label for="settings-center-name">اسم السنتر أو البرنامج</label>
                     <input id="settings-center-name" class="form-input" type="text">
+                </div>
+                <div class="settings-row">
+                    <label for="settings-app-title">اسم البرنامج في شاشة الدخول</label>
+                    <input id="settings-app-title" class="form-input" type="text" placeholder="مثال: نظام إدارة الدروس">
                 </div>
                 <div class="settings-row">
                     <label for="settings-teacher-name">اسم المدرس</label>
@@ -10891,6 +10949,7 @@ function renderProgramSettings() {
 
     const profile = getProgramProfile();
     const center = document.getElementById('settings-center-name');
+    const appTitle = document.getElementById('settings-app-title');
     const teacher = document.getElementById('settings-teacher-name');
     const specialization = document.getElementById('settings-specialization');
     const phone = document.getElementById('settings-phone');
@@ -10900,6 +10959,7 @@ function renderProgramSettings() {
     const zoom = document.getElementById('settings-zoom-label');
 
     if (center) center.value = profile.centerName || '';
+    if (appTitle) appTitle.value = profile.appTitle || profile.centerName || '';
     // ✅ اسم المدرس الآن يُقرأ من الإعدادات مباشرة (يعبّئه المدير بنفسه)
     if (teacher) teacher.value = profile.teacherName || '';
     if (specialization) specialization.value = profile.specialization || '';
@@ -10934,6 +10994,7 @@ function renderProgramSettings() {
 function saveProgramSettings() {
     const profile = getProgramProfile();
     profile.centerName = document.getElementById('settings-center-name')?.value.trim() || 'نظام إدارة الدروس';
+    profile.appTitle = document.getElementById('settings-app-title')?.value.trim() || profile.centerName || 'نظام إدارة الدروس';
     // ✅ اسم المدرس يُحفظ من حقل الإدخال مباشرة (يُدخله المدير مرة واحدة)
     profile.teacherName = document.getElementById('settings-teacher-name')?.value.trim() || '';
     profile.specialization = document.getElementById('settings-specialization')?.value.trim() || 'لإعداد الأوائل';
@@ -10953,6 +11014,7 @@ function saveProgramSettings() {
     const printWidth = document.getElementById('settings-print-width')?.value || '80mm';
     localStorage.setItem('alamin_print_width', printWidth);
     localStorage.setItem('edu_master_settings', JSON.stringify(db._settings));
+    db.save();
 
     applyProgramProfile();
     updateExperienceSummary();

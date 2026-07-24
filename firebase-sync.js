@@ -39,6 +39,10 @@ const CloudSync = (() => {
         measurementId: "G-0K9RZBCG33"
     };
 
+    const TENANT_STORAGE_KEY = 'cloud_sync_tenant_id_' + FIREBASE_CONFIG.projectId;
+    let tenantId = null;
+    let tenantRoot = null;
+
     // نفس قائمة الجداول المستخدمة في IndexedDB (StorageEngine) بالضبط
     const SYNC_TABLES = [
         'students', 'attendance', 'exams', 'scores', 'expenses',
@@ -48,8 +52,8 @@ const CloudSync = (() => {
         'platformCourses', 'platformSubscriptions'
     ];
 
-    const HASH_STORAGE_KEY = 'cloud_sync_hashes_' + FIREBASE_CONFIG.projectId;
-    const LAST_SYNC_KEY = 'cloud_sync_last_time_' + FIREBASE_CONFIG.projectId;
+    let HASH_STORAGE_KEY = 'cloud_sync_hashes_' + FIREBASE_CONFIG.projectId;
+    let LAST_SYNC_KEY = 'cloud_sync_last_time_' + FIREBASE_CONFIG.projectId;
 
     let fsDB = null;
     let ready = false;
@@ -95,6 +99,50 @@ const CloudSync = (() => {
         return h + '_' + str.length;
     }
     // Firestore بيرفض قيم undefined — لازم ننضّف الكائن قبل الإرسال
+    function slugifyTenantPart(value) {
+        return String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/[^\p{L}\p{N}]+/gu, '-')
+            .replace(/^-+|-+$/g, '')
+            .slice(0, 80);
+    }
+
+    function resolveTenantId() {
+        const initialData = window.edu_initial_data || {};
+        const settings = (typeof db !== 'undefined' && db && db._settings) ? db._settings : {};
+        const profile = settings.appProfile || initialData.appProfile || (initialData.settings && initialData.settings.appProfile) || {};
+        const explicit = window.CLOUD_SYNC_TENANT_ID || initialData.cloudSyncTenantId || initialData.tenantId || settings.cloudSyncTenantId;
+        const fromProfile = [
+            profile.centerName,
+            profile.teacherName,
+            profile.specialization
+        ].map(slugifyTenantPart).filter(Boolean).join('-');
+        const fallback = slugifyTenantPart(location.hostname + '-' + location.pathname.replace(/\/[^/]*$/, '')) || 'default';
+        const resolved = slugifyTenantPart(explicit) || fromProfile || fallback;
+        try { localStorage.setItem(TENANT_STORAGE_KEY, resolved); } catch (e) { }
+        return resolved;
+    }
+
+    function configureTenant() {
+        tenantId = resolveTenantId();
+        HASH_STORAGE_KEY = 'cloud_sync_hashes_' + FIREBASE_CONFIG.projectId + '_' + tenantId;
+        LAST_SYNC_KEY = 'cloud_sync_last_time_' + FIREBASE_CONFIG.projectId + '_' + tenantId;
+        tenantRoot = fsDB ? fsDB.collection('_tenants').doc(tenantId) : null;
+    }
+
+    function tableCollection(table) {
+        return tenantRoot.collection(table);
+    }
+
+    function deletionsCollection() {
+        return tenantRoot.collection('_deletions');
+    }
+
+    function settingsDocRef() {
+        return tenantRoot.collection('meta').doc('settings');
+    }
+
     function sanitize(obj) {
         const out = {};
         Object.keys(obj || {}).forEach(k => { if (obj[k] !== undefined) out[k] = obj[k]; });
@@ -242,12 +290,13 @@ const CloudSync = (() => {
             saveHashes();
         }
 
+        if (applyingRemote) return;
         if (!ready || !fsDB) return;
 
         try {
-            await fsDB.collection(table).doc(strId).delete();
+            await tableCollection(table).doc(strId).delete();
             const delDocId = `${table}_${strId}`;
-            await fsDB.collection('_deletions').doc(delDocId).set({
+            await deletionsCollection().doc(delDocId).set({
                 table, id: strId, _syncedAt: Date.now()
             }).catch(() => {});
             console.log(`[CloudSync] ✅ Document ${strId} deleted from ${table}`);
@@ -303,8 +352,7 @@ const CloudSync = (() => {
 
         setStatus('syncing');
         try {
-            await fsDB.collection('meta').doc('settings')
-                .set({ ...sanitize(db._settings), _syncedAt: Date.now() }, { merge: true });
+            await settingsDocRef().set({ ...sanitize(db._settings), _syncedAt: Date.now() }, { merge: true });
             hashes.__settings = h; // نحدّث الهاش بعد التأكد من نجاح الكتابة فقط
             saveHashes();
             setStatus(navigator.onLine ? 'online' : 'offline');
@@ -318,7 +366,7 @@ const CloudSync = (() => {
 
     async function flushOps(table, ops) {
         setStatus('syncing');
-        const col = fsDB.collection(table);
+        const col = tableCollection(table);
         const CHUNK = 400; // أقل من حد الـ 500 لكل batch في Firestore
         const tableHashes = hashes[table] || (hashes[table] = {});
 
@@ -390,7 +438,7 @@ const CloudSync = (() => {
         for (const table of SYNC_TABLES) {
             const arr = Array.isArray(data[table]) ? data[table] : [];
             if (arr.length === 0) continue;
-            const col = fsDB.collection(table);
+            const col = tableCollection(table);
             console.log(`[CloudSync] 📤 رفع ${arr.length} سجل من جدول ${table}...`);
             for (let i = 0; i < arr.length; i += CHUNK) {
                 const chunk = arr.slice(i, i + CHUNK);
@@ -414,8 +462,7 @@ const CloudSync = (() => {
         // رفع الإعدادات لو موجودة
         if (data._settings) {
             try {
-                await fsDB.collection('meta').doc('settings')
-                    .set({ ...sanitize(data._settings), _syncedAt: Date.now() }, { merge: true });
+                await settingsDocRef().set({ ...sanitize(data._settings), _syncedAt: Date.now() }, { merge: true });
                 console.log('[CloudSync] ✅ الإعدادات تم رفعها');
             } catch (err) {
                 console.warn('[CloudSync] ❌ فشل رفع الإعدادات:', err);
@@ -522,7 +569,7 @@ const CloudSync = (() => {
         const report = {};
         try {
             for (const table of SYNC_TABLES) {
-                const snap = await fsDB.collection(table).get({ source: 'server' });
+                const snap = await tableCollection(table).get({ source: 'server' });
                 const remoteArr = [];
                 snap.forEach(doc => {
                     const rawId = doc.id;
@@ -536,7 +583,7 @@ const CloudSync = (() => {
                 report[table] = remoteArr.length + (changed ? ' (تم التحديث/الدمج)' : ' (متطابقة)');
             }
 
-            const settingsDoc = await fsDB.collection('meta').doc('settings').get({ source: 'server' });
+            const settingsDoc = await settingsDocRef().get({ source: 'server' });
             if (settingsDoc.exists) {
                 const remoteSettings = { ...settingsDoc.data() };
                 delete remoteSettings._syncedAt;
@@ -570,6 +617,7 @@ const CloudSync = (() => {
     // يُستدعى من نهاية db.save() الأصلية في app.js
     function onLocalSave(modifiedTable) {
         if (!ready) return;
+        if (applyingRemote) return;
         if (modifiedTable && SYNC_TABLES.includes(modifiedTable)) {
             pushTableDiff(modifiedTable);
         } else if (!modifiedTable) {
@@ -618,7 +666,7 @@ const CloudSync = (() => {
     }
 
     function attachTableListener(table) {
-        const col = fsDB.collection(table);
+        const col = tableCollection(table);
         const lastSync = getLastSyncTime();
         let query = col;
 
@@ -650,7 +698,7 @@ const CloudSync = (() => {
 
     function attachDeletionsListener() {
         const lastSync = getLastSyncTime();
-        let query = fsDB.collection('_deletions');
+        let query = deletionsCollection();
         if (lastSync > 0 && !isFreshSync) {
             const safetyMargin = Math.max(0, lastSync - 1800000);
             query = query.where('_syncedAt', '>=', safetyMargin);
@@ -685,7 +733,7 @@ const CloudSync = (() => {
     }
 
     function attachSettingsListener() {
-        fsDB.collection('meta').doc('settings').onSnapshot(doc => {
+        settingsDocRef().onSnapshot(doc => {
             if (!doc.exists) return;
             if (doc.metadata.hasPendingWrites) return;
 
@@ -722,7 +770,7 @@ const CloudSync = (() => {
         try {
             const lastSync = getLastSyncTime();
             for (const table of SYNC_TABLES) {
-                let colQuery = fsDB.collection(table);
+                let colQuery = tableCollection(table);
                 if (lastSync > 0 && !isFreshSync) {
                     const safetyMargin = Math.max(0, lastSync - 1800000);
                     colQuery = colQuery.where('_syncedAt', '>=', safetyMargin);
@@ -742,7 +790,7 @@ const CloudSync = (() => {
                 }
             }
 
-            const settingsDoc = await fsDB.collection('meta').doc('settings').get();
+            const settingsDoc = await settingsDocRef().get();
             if (settingsDoc.exists) {
                 const remoteSettings = { ...settingsDoc.data() };
                 delete remoteSettings._syncedAt;
@@ -755,6 +803,7 @@ const CloudSync = (() => {
             isFreshSync = false;
 
             // ✅ حماية مهمة: بعد الدمج، نضمن رفع أي بيانات محلية غير موجودة على السحابة
+            applyingRemote = false;
             pushAllTables();
         } catch (e) {
             console.warn('[CloudSync] pullAllFromCloudInitial warning:', e);
@@ -775,13 +824,14 @@ const CloudSync = (() => {
             return;
         }
 
-        loadHashes();
-        populateHashesFromLocal();
         console.log('[CloudSync] بدء التهيئة لمشروع:', FIREBASE_CONFIG.projectId);
 
         try {
             firebase.initializeApp(FIREBASE_CONFIG);
             fsDB = firebase.firestore();
+            configureTenant();
+            loadHashes();
+            populateHashesFromLocal();
 
             // تفعيل الـ Persistence الخاصة بـ Firestore نفسها
             try {
@@ -796,8 +846,6 @@ const CloudSync = (() => {
             console.log('[CloudSync] ✅ الاتصال جاهز، مشروع Firebase:', FIREBASE_CONFIG.projectId);
             setStatus(navigator.onLine ? 'syncing' : 'offline');
 
-            attachAllListeners();
-
             window.addEventListener('online', () => { console.log('[CloudSync] رجع النت — إعادة مزامنة'); setStatus('syncing'); pushAllTables(); });
             window.addEventListener('offline', () => setStatus('offline'));
 
@@ -808,6 +856,7 @@ const CloudSync = (() => {
             } else {
                 pushAllTables();
             }
+            attachAllListeners();
 
             setTimeout(() => setStatus(navigator.onLine ? 'online' : 'offline'), 2500);
         } catch (err) {
@@ -821,6 +870,7 @@ const CloudSync = (() => {
         const info = {
             ready,
             projectId: FIREBASE_CONFIG.projectId,
+            tenantId,
             online: navigator.onLine,
             tablesTracked: Object.keys(hashes).filter(k => k !== '__settings'),
             recordCountsPerTable: {},
