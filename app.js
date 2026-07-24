@@ -6681,7 +6681,7 @@ function sendStudentQRWhatsApp(type) {
 
     const profile = typeof getProgramProfile === 'function' ? getProgramProfile() : {};
     const teacherName = typeof getTeacherDisplayName === 'function' ? getTeacherDisplayName() : 'أستاذ المادة';
-    const spec = profile.specialization || 'مدرس رياضيات';
+    const spec = profile.specialization || 'لإعداد الأوائل';
 
     let msg = '';
     if (typeof buildFormalParentMessage === 'function') {
@@ -9389,7 +9389,7 @@ function sendMonthlyReportWhatsApp() {
     // 🔧 الاسم مثبّت دائماً "نظام إدارة الدروس" — لا يعتمد على الإعدادات المحفوظة
     const teacherLine = {
         name: getTeacherDisplayName(),
-        spec: _profileWA.specialization || 'مدرس رياضيات'
+        spec: _profileWA.specialization || 'لإعداد الأوائل'
     };
     const examsSection = examsAttended.length > 0
         ? examsAttended.map(r => {
@@ -9453,7 +9453,7 @@ function renderMonthlyReportBody() {
     const gradeObj = (typeof gradesList !== 'undefined') ? gradesList.find(g => String(g.id) === String(s.grade)) : null;
 
     // ── Header info ──
-    document.getElementById('report-teacher-name').innerText = `${getTeacherDisplayName()} — ${profile.specialization || 'مدرس رياضيات'}`;
+    document.getElementById('report-teacher-name').innerText = `${getTeacherDisplayName()} — ${profile.specialization || 'لإعداد الأوائل'}`;
     document.getElementById('report-date-range').innerText = `للفترة: ${period.label}`;
     document.getElementById('rep-st-name').innerText = s.name;
     document.getElementById('rep-st-code').innerText = s.qrCode || '---';
@@ -10455,17 +10455,17 @@ function initExperienceEnhancements() {
 function getProgramProfile() {
     if (!db._settings.appProfile) {
         db._settings.appProfile = {
-            centerName: 'مستر محمد نبيل',
-            teacherName: 'مستر محمد نبيل',
-            specialization: 'مدرس رياضيات',
+            centerName: 'سنتر البنا',
+            teacherName: 'سنتر البنا',
+            specialization: 'لإعداد الأوائل',
             phone: '',
             absenceMessage: 'السلام عليكم ورحمة الله وبركاته،\nنحيط سيادتكم علماً بأن الطالب/ـة {StudentName} لم يحضر/تحضر الحصة الدراسية اليوم.\nنرجو التكرم بمتابعة سبب الغياب.',
             reportMessage: 'السلام عليكم ورحمة الله وبركاته،\nنرفق لسيادتكم تقرير الأداء الشهري للطالب/ـة {StudentName}.\nنسأل الله لابنكم/ابنتكم دوام التوفيق والنجاح.'
         };
     }
     // ✅ توافق مع الملفات القديمة: تأكد من وجود الحقول الجديدة دائماً
-    if (!db._settings.appProfile.specialization || db._settings.appProfile.specialization === 'أستاذ الرياضيات') {
-        db._settings.appProfile.specialization = 'مدرس رياضيات';
+    if (!db._settings.appProfile.specialization) {
+        db._settings.appProfile.specialization = 'لإعداد الأوائل';
     }
     if (db._settings.appProfile.absenceMessage === undefined) {
         db._settings.appProfile.absenceMessage = 'السلام عليكم ورحمة الله وبركاته،\nنحيط سيادتكم علماً بأن الطالب/ـة {StudentName} لم يحضر/تحضر الحصة الدراسية اليوم.\nنرجو التكرم بمتابعة سبب الغياب.';
@@ -10473,11 +10473,11 @@ function getProgramProfile() {
     if (db._settings.appProfile.reportMessage === undefined) {
         db._settings.appProfile.reportMessage = 'السلام عليكم ورحمة الله وبركاته،\nنرفق لسيادتكم تقرير الأداء الشهري للطالب/ـة {StudentName}.\nنسأل الله لابنكم/ابنتكم دوام التوفيق والنجاح.';
     }
-    if (!db._settings.appProfile.teacherName || db._settings.appProfile.teacherName === 'نظام إدارة الدروس' || db._settings.appProfile.teacherName === 'سنتر العباقرة') {
-        db._settings.appProfile.teacherName = 'مستر محمد نبيل';
+    if (!db._settings.appProfile.teacherName || db._settings.appProfile.teacherName === 'نظام إدارة الدروس' || db._settings.appProfile.teacherName === 'سنتر العباقرة' || db._settings.appProfile.teacherName === 'مستر محمد نبيل' || db._settings.appProfile.teacherName === 'سنتر البنا لإعداد الأوائل') {
+        db._settings.appProfile.teacherName = 'سنتر البنا';
     }
-    if (!db._settings.appProfile.centerName || db._settings.appProfile.centerName === 'نظام إدارة الدروس' || db._settings.appProfile.centerName === 'سنتر العباقرة') {
-        db._settings.appProfile.centerName = 'مستر محمد نبيل';
+    if (!db._settings.appProfile.centerName || db._settings.appProfile.centerName === 'نظام إدارة الدروس' || db._settings.appProfile.centerName === 'سنتر العباقرة' || db._settings.appProfile.centerName === 'مستر محمد نبيل' || db._settings.appProfile.centerName === 'سنتر البنا لإعداد الأوائل') {
+        db._settings.appProfile.centerName = 'سنتر البنا';
     }
 
     return db._settings.appProfile;
@@ -10486,7 +10486,7 @@ function getProgramProfile() {
 /** يعيد اسم المدرس المحفوظ في الإعدادات، أو نص بديل إن لم يُعيَّن */
 function getTeacherDisplayName() {
     const profile = getProgramProfile();
-    return (profile.teacherName && profile.teacherName.trim()) ? profile.teacherName.trim() : 'مستر محمد نبيل';
+    return (profile.teacherName && profile.teacherName.trim()) ? profile.teacherName.trim() : 'سنتر البنا';
 }
 
 /** يعيد نص رسالة الغياب بعد استبدال {StudentName} باسم الطالب */
@@ -10508,7 +10508,7 @@ function buildReportMessageForStudent(studentName) {
 function getTeacherSignatureLine() {
     const name = getTeacherDisplayName();
     const profile = getProgramProfile();
-    const spec = profile.specialization || 'مدرس رياضيات';
+    const spec = profile.specialization || 'لإعداد الأوائل';
     return `\n\n━━━━━━━━━━━━━━\n*${name}*\n${spec}`;
 }
 // للتوافق مع الأكواد القديمة التي تستخدم TEACHER_FIXED_NAME مباشرة
@@ -10662,7 +10662,7 @@ function viewFinancialEditLog() {
             th { background:#4f46e5; color:#fff; }
         </style></head><body>
         <h2><i class="fas fa-history"></i> سجل التعديلات المالية على الأرشيف</h2>
-        <div class="sub">${getTeacherDisplayName()} — ${profile.specialization || 'مدرس رياضيات'}</div>
+        <div class="sub">${getTeacherDisplayName()} — ${profile.specialization || 'لإعداد الأوائل'}</div>
         <table>
             <thead><tr>
                 <th>اسم الطالب</th><th>الشهر / الدورة</th><th>الحالة القديمة</th><th>الحالة الجديدة</th>
@@ -10682,13 +10682,13 @@ function applyProgramProfile() {
     document.title = `${profile.centerName} | نظام الإدارة`;
 
     const logo = document.querySelector('.logo');
-    if (logo) logo.innerHTML = `<i class="fas fa-book-open"></i> ${profile.centerName || 'مستر محمد نبيل'}`;
+    if (logo) logo.innerHTML = `<i class="fas fa-book-open"></i> ${profile.centerName || 'سنتر البنا'}`;
 
     const userName = document.querySelector('.user-profile span');
     if (userName) userName.innerText = getTeacherDisplayName();
 
     const userSpec = document.querySelector('.user-profile .user-specialization');
-    if (userSpec) userSpec.innerText = profile.specialization || 'مدرس رياضيات';
+    if (userSpec) userSpec.innerText = profile.specialization || 'لإعداد الأوائل';
 }
 
 function initProgramSettings() {
@@ -10740,7 +10740,7 @@ function ensureSettingsSection() {
                 </div>
                 <div class="settings-row">
                     <label for="settings-specialization">التخصص / الوظيفة</label>
-                    <input id="settings-specialization" class="form-input" type="text" placeholder="مثال: مدرس رياضيات">
+                    <input id="settings-specialization" class="form-input" type="text" placeholder="مثال: لإعداد الأوائل">
                 </div>
                 <div class="settings-row">
                     <label for="settings-phone">رقم التواصل</label>
@@ -10936,7 +10936,7 @@ function saveProgramSettings() {
     profile.centerName = document.getElementById('settings-center-name')?.value.trim() || 'نظام إدارة الدروس';
     // ✅ اسم المدرس يُحفظ من حقل الإدخال مباشرة (يُدخله المدير مرة واحدة)
     profile.teacherName = document.getElementById('settings-teacher-name')?.value.trim() || '';
-    profile.specialization = document.getElementById('settings-specialization')?.value.trim() || 'مدرس رياضيات';
+    profile.specialization = document.getElementById('settings-specialization')?.value.trim() || 'لإعداد الأوائل';
     profile.phone = document.getElementById('settings-phone')?.value.trim() || '';
 
     // ✅ حفظ نصوص الرسائل

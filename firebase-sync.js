@@ -30,13 +30,13 @@ const CloudSync = (() => {
     // ⚠️ هذا الكونفيج عام (client-side) وليس سرًا، لكن تأكد أن Firestore
     // Security Rules عندك محكمة قبل الإطلاق الفعلي للمستخدمين.
     const FIREBASE_CONFIG = {
-        apiKey: "AIzaSyDxFK6MBRsResqK0Nj-2C9gD-q50bmnumE",
-        authDomain: "mohamed-nibil.firebaseapp.com",
-        projectId: "mohamed-nibil",
-        storageBucket: "mohamed-nibil.firebasestorage.app",
-        messagingSenderId: "639224528938",
-        appId: "1:639224528938:web:01abd0c6d937f37c5d8353",
-        measurementId: "G-VDJCV0BST4"
+        apiKey: "AIzaSyAfEMe02VObGnS3ZWuJ1SxgTOwGSPkLiSw",
+        authDomain: "sentar-elbanna.firebaseapp.com",
+        projectId: "sentar-elbanna",
+        storageBucket: "sentar-elbanna.firebasestorage.app",
+        messagingSenderId: "346535652734",
+        appId: "1:346535652734:web:ef5fabf52c60dd7dfa172f",
+        measurementId: "G-0K9RZBCG33"
     };
 
     // نفس قائمة الجداول المستخدمة في IndexedDB (StorageEngine) بالضبط

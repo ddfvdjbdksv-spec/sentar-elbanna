@@ -1,7 +1,7 @@
 {
-  "name": "مستر محمد نبيل",
-  "short_name": "مستر محمد نبيل",
-  "description": "نظام مستر محمد نبيل المتكامل",
+  "name": "سنتر البنا",
+  "short_name": "سنتر البنا",
+  "description": "سنتر البنا لإعداد الأوائل — نظام الإدارة المتكامل",
   "start_url": "./",
   "display": "standalone",
   "orientation": "any",
