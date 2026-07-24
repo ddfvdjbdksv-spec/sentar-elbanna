@@ -207,7 +207,7 @@ const CloudSync = (() => {
             } catch (e) { }
 
             pendingTableRefreshes.clear();
-        }, 300);
+        }, 50);
     }
 
     function populateHashesFromLocal() {
@@ -651,7 +651,7 @@ const CloudSync = (() => {
         // ── تفعيل المزامنة بالفروقات (Delta Sync) ──
         // إذا سبق المزامنة، نستمع فقط للتعديلات التي حدثت بعد وقت آخر مزامنة ناجهة (مع هامش دقيقتين)
         if (lastSync > 0 && !isFreshSync) {
-            const safetyMargin = Math.max(0, lastSync - 120000);
+            const safetyMargin = Math.max(0, lastSync - 1800000); // هامش 30 دقيقة لعدم تفويت أي تعديلات أوفلاين
             query = col.where('_syncedAt', '>=', safetyMargin);
         }
 
@@ -666,6 +666,7 @@ const CloudSync = (() => {
             if (changed) {
                 saveHashes();
                 queueTableUIRefresh(table);
+                setStatus('online');
             }
             updateLastSyncTime();
         }, err => {
@@ -677,7 +678,7 @@ const CloudSync = (() => {
         const lastSync = getLastSyncTime();
         let query = fsDB.collection('_deletions');
         if (lastSync > 0 && !isFreshSync) {
-            const safetyMargin = Math.max(0, lastSync - 120000);
+            const safetyMargin = Math.max(0, lastSync - 1800000);
             query = query.where('_syncedAt', '>=', safetyMargin);
         }
         query.onSnapshot(async snapshot => {
@@ -749,7 +750,7 @@ const CloudSync = (() => {
             for (const table of SYNC_TABLES) {
                 let colQuery = fsDB.collection(table);
                 if (lastSync > 0 && !isFreshSync) {
-                    const safetyMargin = Math.max(0, lastSync - 120000);
+                    const safetyMargin = Math.max(0, lastSync - 1800000);
                     colQuery = colQuery.where('_syncedAt', '>=', safetyMargin);
                 }
                 const snap = await colQuery.get();
