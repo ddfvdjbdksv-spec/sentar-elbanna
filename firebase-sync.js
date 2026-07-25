@@ -135,12 +135,20 @@ const CloudSync = (() => {
         return tenantRoot.collection(table);
     }
 
+    function legacyTableCollection(table) {
+        return fsDB.collection(table);
+    }
+
     function deletionsCollection() {
         return tenantRoot.collection('_deletions');
     }
 
     function settingsDocRef() {
         return tenantRoot.collection('meta').doc('settings');
+    }
+
+    function legacySettingsDocRef() {
+        return fsDB.collection('meta').doc('settings');
     }
 
     function sanitize(obj) {
@@ -754,6 +762,7 @@ const CloudSync = (() => {
                 }
             } catch (e) { }
 
+            try { if (typeof window.applyProgramProfile === 'function') window.applyProgramProfile(); } catch (e) { }
             queueTableUIRefresh(null);
             updateLastSyncTime();
         }, err => console.warn('[CloudSync] settings listener error', err));
@@ -765,10 +774,60 @@ const CloudSync = (() => {
         attachDeletionsListener();
     }
 
+    function getLocalRecordCount() {
+        return SYNC_TABLES.filter(table => table !== 'groups').reduce((total, table) => {
+            const arr = (typeof db !== 'undefined' && db) ? db[table] : null;
+            return total + (Array.isArray(arr) ? arr.length : 0);
+        }, 0);
+    }
+
+    async function importLegacyRootDataIfTenantEmpty(tenantRecordCount, tenantHasSettings) {
+        const localRecordCount = getLocalRecordCount();
+        if (!isFreshSync || tenantRecordCount > 0 || tenantHasSettings || localRecordCount > 0) return false;
+
+        let importedRecords = 0;
+        console.log('[CloudSync] 🔎 المسار الجديد فارغ — البحث عن بيانات قديمة في جذر Firestore...');
+
+        for (const table of SYNC_TABLES) {
+            const snap = await legacyTableCollection(table).get({ source: 'server' });
+            const remoteArr = [];
+            snap.forEach(doc => {
+                const rawId = doc.id;
+                const numericId = isNaN(Number(rawId)) ? rawId : Number(rawId);
+                const data = { ...doc.data(), id: numericId };
+                delete data._syncedAt;
+                remoteArr.push(data);
+            });
+
+            if (remoteArr.length > 0) {
+                importedRecords += remoteArr.length;
+                await mergeRemoteTable(table, remoteArr);
+            }
+        }
+
+        const legacySettingsDoc = await legacySettingsDocRef().get({ source: 'server' });
+        if (legacySettingsDoc.exists) {
+            const legacySettings = { ...legacySettingsDoc.data() };
+            delete legacySettings._syncedAt;
+            db._settings = { ...db._settings, ...legacySettings };
+            try { localStorage.setItem('edu_master_settings', JSON.stringify(db._settings)); } catch (e) {}
+            hashes.__settings = hashOf(db._settings);
+        }
+
+        if (importedRecords > 0 || legacySettingsDoc.exists) {
+            saveHashes();
+            console.log(`[CloudSync] ✅ تم استيراد ${importedRecords} سجل من مكان البيانات القديم إلى قاعدة المدرس الجديدة`);
+            return true;
+        }
+
+        return false;
+    }
+
     async function pullAllFromCloudInitial() {
         applyingRemote = true;
         try {
             const lastSync = getLastSyncTime();
+            let tenantRecordCount = 0;
             for (const table of SYNC_TABLES) {
                 let colQuery = tableCollection(table);
                 if (lastSync > 0 && !isFreshSync) {
@@ -784,6 +843,7 @@ const CloudSync = (() => {
                     delete data._syncedAt;
                     remoteArr.push(data);
                 });
+                tenantRecordCount += remoteArr.length;
 
                 if (remoteArr.length > 0) {
                     await mergeRemoteTable(table, remoteArr);
@@ -791,6 +851,7 @@ const CloudSync = (() => {
             }
 
             const settingsDoc = await settingsDocRef().get();
+            const tenantHasSettings = settingsDoc.exists;
             if (settingsDoc.exists) {
                 const remoteSettings = { ...settingsDoc.data() };
                 delete remoteSettings._syncedAt;
@@ -798,6 +859,7 @@ const CloudSync = (() => {
                 try { localStorage.setItem('edu_master_settings', JSON.stringify(db._settings)); } catch (e) {}
                 hashes.__settings = hashOf(db._settings);
             }
+            await importLegacyRootDataIfTenantEmpty(tenantRecordCount, tenantHasSettings);
             saveHashes();
             updateLastSyncTime();
             isFreshSync = false;

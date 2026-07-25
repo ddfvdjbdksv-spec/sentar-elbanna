@@ -11130,6 +11130,8 @@ async function importPlatformCourseCodes() {
 function printPlatformCourseCards() {
     const rows = getPlatformCodesFiltered();
     if (!rows.length) return showNotification('لا توجد أكواد للطباعة', 'warning');
+    const profile = (typeof getProgramProfile === 'function') ? getProgramProfile() : {};
+    const teacherName = (typeof getTeacherDisplayName === 'function') ? getTeacherDisplayName() : (profile.teacherName || 'نظام إدارة الدروس');
     const html = `
     <html dir="rtl"><head><title>أكواد المنصة</title>
     <style>
@@ -11146,7 +11148,7 @@ function printPlatformCourseCards() {
       <div class="grid">
         ${rows.map(item => `
           <div class="card">
-            <div class="title">نظام إدارة الدروس - كود تفعيل كورس</div>
+            <div class="title">${teacherName} - كود تفعيل كورس</div>
             <div class="student">${item.linkedStudentName || 'طالب غير محدد'}</div>
             <div class="meta">${platformGradeLabel(item.grade)} | ${item.courseTitle || '-'}</div>
             <div class="code">${item.code || '-'}</div>
@@ -11259,6 +11261,7 @@ window.initPlatformCodesSection = initPlatformCodesSection;
 window.onload = async () => {
     try {
         await ensureAppLoaded();
+        if (typeof applyProgramProfile === 'function') applyProgramProfile();
     } catch (err) {
         return;
     }
@@ -11378,7 +11381,7 @@ const exposures = {
 
     // Data & Sync
     exportData, exportStudentsToFirebase, importData, importFromFolder, showCycleArchive, viewArchivedCycle,
-    applyAppTheme, toggleDayNightMode, initExperienceEnhancements, updateExperienceSummary,
+    applyAppTheme, toggleDayNightMode, initExperienceEnhancements, updateExperienceSummary, applyProgramProfile,
     initProgramSettings, renderProgramSettings, saveProgramSettings,
     prepareHandoverDownload: async () => {
         showNotification('جاري تجهيز نسخة كاملة للنقل...', 'info');
@@ -11852,7 +11855,10 @@ function checkAppPassword(val) {
             successDiv.innerHTML = `<i class="fas fa-check-circle"></i> تم تسجيل الدخول بنجاح!`;
         }
         const passwordInput = document.getElementById('app-password-input');
-        if (passwordInput) passwordInput.disabled = true;
+        if (passwordInput) {
+            passwordInput.value = '';
+            passwordInput.disabled = true;
+        }
 
         if (typeof proceedAfterPasswordSuccess === 'function') {
             // user-management.js متاح: يقرر هو لو محتاج يعرض شاشة "من أنت؟"
@@ -11963,7 +11969,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         splash.style.display = 'flex';
         // تأخير بسيط لضمان ظهور الـ splash قبل أي عملية ثقيلة
         await new Promise(r => setTimeout(r, 50));
-        document.getElementById('app-password-input')?.focus();
+        const passwordInput = document.getElementById('app-password-input');
+        if (passwordInput) {
+            passwordInput.value = '';
+            passwordInput.setAttribute('autocomplete', 'new-password');
+            passwordInput.focus();
+        }
     }
 
     try {
@@ -11985,6 +11996,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         // النظام لو فشلت أو لو مفيش إنترنت؛ النظام يعمل محليًا زي العادة ──
         if (typeof CloudSync !== 'undefined') {
             await CloudSync.init().catch(e => console.warn('[CloudSync] init error', e));
+            if (typeof applyProgramProfile === 'function') applyProgramProfile();
         }
     } catch (err) {
         // حتى لو فشل التحميل، تبقى شاشة المرور ظاهرة

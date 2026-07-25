@@ -9,7 +9,7 @@
 //    5. أو: يُطبَّق تلقائياً بعد 10 ثوانٍ بدون تدخّل
 // ============================================================
 
-const CACHE_VERSION = 'edarat-eldroos-pwa-v35';
+const CACHE_VERSION = 'edarat-eldroos-pwa-v36';
 
 const APP_SHELL = [
   './',
