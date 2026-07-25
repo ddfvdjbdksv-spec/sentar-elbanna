@@ -774,34 +774,53 @@ const CloudSync = (() => {
         attachDeletionsListener();
     }
 
-    function getLocalRecordCount() {
-        return SYNC_TABLES.filter(table => table !== 'groups').reduce((total, table) => {
-            const arr = (typeof db !== 'undefined' && db) ? db[table] : null;
-            return total + (Array.isArray(arr) ? arr.length : 0);
-        }, 0);
+    function legacyImportStorageKey() {
+        return 'cloud_sync_legacy_root_imported_' + FIREBASE_CONFIG.projectId + '_' + tenantId;
     }
 
-    async function importLegacyRootDataIfTenantEmpty(tenantRecordCount, tenantHasSettings) {
-        const localRecordCount = getLocalRecordCount();
-        if (!isFreshSync || tenantRecordCount > 0 || tenantHasSettings || localRecordCount > 0) return false;
+    function mergeSettingsWithoutOverwritingCurrent(legacySettings) {
+        if (!legacySettings || typeof legacySettings !== 'object') return false;
+        const current = db._settings || {};
+        db._settings = { ...legacySettings, ...current };
+        if (legacySettings.appProfile || current.appProfile) {
+            db._settings.appProfile = {
+                ...(legacySettings.appProfile || {}),
+                ...(current.appProfile || {})
+            };
+        }
+        try { localStorage.setItem('edu_master_settings', JSON.stringify(db._settings)); } catch (e) {}
+        hashes.__settings = hashOf(db._settings);
+        return true;
+    }
+
+    async function importLegacyRootDataOnce(force = false) {
+        if (!force) {
+            try {
+                if (localStorage.getItem(legacyImportStorageKey()) === 'true') return false;
+            } catch (e) { }
+        }
 
         let importedRecords = 0;
-        console.log('[CloudSync] 🔎 المسار الجديد فارغ — البحث عن بيانات قديمة في جذر Firestore...');
+        let importedSettings = false;
+        console.log('[CloudSync] 🔎 دمج بيانات الجذر القديم مع قاعدة المدرس الجديدة...');
 
         for (const table of SYNC_TABLES) {
             const snap = await legacyTableCollection(table).get({ source: 'server' });
-            const remoteArr = [];
+            const localArr = Array.isArray(db[table]) ? db[table] : (db[table] = []);
+            const existingIds = new Set(localArr.map(r => String(r?.id)));
+            const missingArr = [];
             snap.forEach(doc => {
                 const rawId = doc.id;
                 const numericId = isNaN(Number(rawId)) ? rawId : Number(rawId);
+                if (existingIds.has(String(numericId))) return;
                 const data = { ...doc.data(), id: numericId };
                 delete data._syncedAt;
-                remoteArr.push(data);
+                missingArr.push(data);
             });
 
-            if (remoteArr.length > 0) {
-                importedRecords += remoteArr.length;
-                await mergeRemoteTable(table, remoteArr);
+            if (missingArr.length > 0) {
+                importedRecords += missingArr.length;
+                await mergeRemoteTable(table, missingArr);
             }
         }
 
@@ -809,24 +828,41 @@ const CloudSync = (() => {
         if (legacySettingsDoc.exists) {
             const legacySettings = { ...legacySettingsDoc.data() };
             delete legacySettings._syncedAt;
-            db._settings = { ...db._settings, ...legacySettings };
-            try { localStorage.setItem('edu_master_settings', JSON.stringify(db._settings)); } catch (e) {}
-            hashes.__settings = hashOf(db._settings);
+            importedSettings = mergeSettingsWithoutOverwritingCurrent(legacySettings);
         }
 
-        if (importedRecords > 0 || legacySettingsDoc.exists) {
+        try { localStorage.setItem(legacyImportStorageKey(), 'true'); } catch (e) { }
+
+        if (importedRecords > 0 || importedSettings) {
             saveHashes();
-            console.log(`[CloudSync] ✅ تم استيراد ${importedRecords} سجل من مكان البيانات القديم إلى قاعدة المدرس الجديدة`);
+            console.log(`[CloudSync] ✅ تم دمج ${importedRecords} سجل من النظام القديم داخل قاعدة المدرس الجديدة`);
             return true;
         }
 
         return false;
     }
 
+    async function importLegacyRootDataManual() {
+        if (!ready || !fsDB) throw new Error('CloudSync not ready');
+        setStatus('syncing');
+        applyingRemote = true;
+        try {
+            const imported = await importLegacyRootDataOnce(true);
+            saveHashes();
+            queueTableUIRefresh(null);
+            return imported;
+        } finally {
+            applyingRemote = false;
+            pushAllTables();
+            setStatus(navigator.onLine ? 'online' : 'offline');
+        }
+    }
+
     async function pullAllFromCloudInitial() {
         applyingRemote = true;
         try {
             const lastSync = getLastSyncTime();
+            await importLegacyRootDataOnce(false);
             let tenantRecordCount = 0;
             for (const table of SYNC_TABLES) {
                 let colQuery = tableCollection(table);
@@ -859,7 +895,6 @@ const CloudSync = (() => {
                 try { localStorage.setItem('edu_master_settings', JSON.stringify(db._settings)); } catch (e) {}
                 hashes.__settings = hashOf(db._settings);
             }
-            await importLegacyRootDataIfTenantEmpty(tenantRecordCount, tenantHasSettings);
             saveHashes();
             updateLastSyncTime();
             isFreshSync = false;
@@ -947,7 +982,7 @@ const CloudSync = (() => {
         init, onLocalSave, pushAllTables, isReady: () => ready, debugInfo,
         forceSync: pushAllTables,
         forceFullUpload,
-        syncTableNow, deleteRecord,
+        syncTableNow, deleteRecord, importLegacyRootData: importLegacyRootDataManual,
         manualPushToCloud, manualPullFromCloud,
         getFirestoreDB: () => fsDB
     };
