@@ -1,8 +1,8 @@
 // ============================================================
 //  firebase-config.js
-//  إعدادات Firebase — قاعدة بيانات المهندس اسماعيل الامام
+//  إعدادات Firebase — سنتر البنا
 //
-//  القاعدة النشطة: ismaieil-alemam
+//  القاعدة النشطة: sentar-elbanna
 //    (مزامنة الأجهزة + كل بيانات البرنامج)
 //
 //  ملاحظة مهمة:
@@ -13,16 +13,16 @@
 // ============================================================
 
 window.FIREBASE_MAIN_CONFIG = {
-    apiKey: "AIzaSyC7bc6YsejVbyZ5u_eizhZMpf4ipFVtXxg",
-    authDomain: "ismaieil-alemam.firebaseapp.com",
-    projectId: "ismaieil-alemam",
-    storageBucket: "ismaieil-alemam.firebasestorage.app",
-    messagingSenderId: "897432455640",
-    appId: "1:897432455640:web:79238e047c57254409caad",
-    measurementId: "G-D9M4P9T9EQ"
+    apiKey: "AIzaSyAfEMe02VObGnS3ZWuJ1SxgTOwGSPkLiSw",
+    authDomain: "sentar-elbanna.firebaseapp.com",
+    projectId: "sentar-elbanna",
+    storageBucket: "sentar-elbanna.firebasestorage.app",
+    messagingSenderId: "346535652734",
+    appId: "1:346535652734:web:ef5fabf52c60dd7dfa172f",
+    measurementId: "G-0K9RZBCG33"
 };
 
 // قاعدة المنصة التعليمية — معطّلة (الإعدادات فارغة عمداً)
 window.FIREBASE_PLATFORM_CONFIG = null;
 
-console.info('[firebase-config.js] ✅ إعدادات Firebase محمّلة — القاعدة النشطة: ismaieil-alemam');
+console.info('[firebase-config.js] ✅ إعدادات Firebase محمّلة — القاعدة النشطة: sentar-elbanna');
